@@ -659,3 +659,78 @@ export const bexActionsAbi = [
     ],
   },
 ]
+
+export const evmVoiceAbi = [
+  {
+    "type": "function",
+    "name": "getExpectedProxyAddress",
+    "inputs": [
+      {
+        "name": "sender",
+        "type": "tuple",
+        "internalType": "struct EvmVoice.Sender",
+        "components": [
+          {
+            "name": "connection",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "port",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "sender",
+            "type": "string",
+            "internalType": "string"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getProxyAddress",
+    "inputs": [
+      {
+        "name": "sender",
+        "type": "tuple",
+        "internalType": "struct EvmVoice.Sender",
+        "components": [
+          {
+            "name": "connection",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "port",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "sender",
+            "type": "string",
+            "internalType": "string"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+]
