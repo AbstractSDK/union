@@ -10,6 +10,8 @@ import * as Card from "$lib/components/ui/card/index.ts"
 import { UnionClient } from "@union/client"
 import { Button } from "$lib/components/ui/button"
 import type { Chain, UserAddresses } from "$lib/types.ts"
+import { encodeFunctionData } from 'viem'
+import { bexActionsAbi, ibcTokenActionsAbi } from '$lib/swap/abis.ts'
 
 export let chains: Array<Chain>
 
@@ -61,32 +63,66 @@ const swap = async () => {
     kind: "cosmwasm",
     instructions: [
       {
-        contractAddress: "union1c4wl7ytmf7kp6vupf50y3n8myu7m6xn8vspufledqd8x8hj9dn2s3clks5",
+        contractAddress: "union10qdttl5qnqfsuvm852zrfysqkuydn0hwz6xe5472tv5590v95zhs49fdlh",
         msg: {
           execute: {
             msgs: [
+            // approve
+            //   {
+            //     call: {
+            //       // honey
+            //       to: "0x08247b1C6D6AACF6C655f711661D5810380C8385",
+            //       data: "095ea7b3000000000000000000000000ab827b1cc3535a9e549ee387a6e9c3f02f481b490000000000000000000000000000000000000000000000000000000000000007",
+            //     }
+            //   },
+            //       // swap
+            //   {
+            //     call: {
+            //       // bex
+            //       to: "0xAB827b1Cc3535A9e549EE387A6E9C3F02F481B49",
+            //       data: "3d719cd900000000000000000000000008247b1c6d6aacf6c655f711661d5810380c83850000000000000000000000000e4aaf1351de4c0264c5c7056ef3777b41bd8e030000000000000000000000000000000000000000000000000000000000008ca00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000070000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ffff5433e2b3d8211706e6102aa947100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+            //     }
+            //   },
+              // swap
               {
-                call: {
-                  to: "0x08247b1C6D6AACF6C655f711661D5810380C8385",
-                  data: "095ea7b3000000000000000000000000ab827b1cc3535a9e549ee387a6e9c3f02f481b490000000000000000000000000000000000000000000000000000000000000007"
-                }
+                delegate_call: {
+                  to: '0xD7B680Ce6444E162AcD35D6213cFE75B3F3af1d5',
+                  data: encodeFunctionData({
+                    abi: bexActionsAbi,
+                    functionName: "swap",
+                    args: [
+                      "0xD7B680Ce6444E162AcD35D6213cFE75B3F3af1d5",
+                      {
+                        base: "0x08247b1C6D6AACF6C655f711661D5810380C8385",
+                        quote: "0x0E4aaF1351de4c0264C5c7056Ef3777b41BD8e03",
+                        quantity: 7
+                      }
+                    ]
+                  }).slice(2),
+                },
+                // allow_failure: true
               },
+              // send
               {
-                call: {
-                  to: "0xAB827b1Cc3535A9e549EE387A6E9C3F02F481B49",
-                  data: "3d719cd900000000000000000000000008247b1c6d6aacf6c655f711661d5810380c83850000000000000000000000000e4aaf1351de4c0264c5c7056ef3777b41bd8e030000000000000000000000000000000000000000000000000000000000008ca00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000070000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ffff5433e2b3d8211706e6102aa947100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
-                }
-              },
-              {
-                ibc_send: {
-                  tokens: [
-                    {
-                      address: "0x0E4aaF1351de4c0264C5c7056Ef3777b41BD8e03",
-                      amount: "718283233153"
-                    }
-                  ],
-                  channel_id: "channel-3",
-                  receiver: "15cbba30256b961c37b3fd7224523abdf562fd72"
+                delegate_call: {
+                  to: '0x00d14FB2734690E18D06f62656cbAb048B694AE1',
+                  data: encodeFunctionData({
+                    abi: ibcTokenActionsAbi,
+                    functionName: "ibcSendPercentage",
+                    args: [
+                      '0x00d14FB2734690E18D06f62656cbAb048B694AE1',
+                      {
+                        tokens: [{
+                          denom: "0x0E4aaF1351de4c0264C5c7056Ef3777b41BD8e03",
+                          percentage: 1e6
+                        }],
+                        channelId: "channel-3",
+                        receiver: "15cbba30256b961c37b3fd7224523abdf562fd72",
+                        extension: ""
+                      }
+                    ]
+                  }).slice(2),
+                  // allow_failure: true
                 }
               }
             ],
@@ -100,7 +136,7 @@ const swap = async () => {
 
   // @ts-ignore
   const cosmosTransfer = await cosmosClient.transferAssets(evmNoteMsg)
-  console.log(cosmosTransfer.transactionHash)
+  console.log(`https://explorer.nodestake.org/union-testnet/tx/${cosmosTransfer.transactionHash}`)
 }
 </script>
 
@@ -161,5 +197,5 @@ const swap = async () => {
     selectedChain={$toChainId}
     userAddr={$userAddr}
   />
-  
+
 </ChainsGate>
