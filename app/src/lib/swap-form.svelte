@@ -212,7 +212,7 @@ const swap = async () => {
     <Card.Header>
       <Card.Title>From</Card.Title>
       <Card.Description>
-        Chain to start the swap from
+        Chain to start the swap
       </Card.Description>
     </Card.Header>
       <Card.Content>
