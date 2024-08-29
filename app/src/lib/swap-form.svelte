@@ -6,12 +6,13 @@ import { derived, writable, type Readable } from "svelte/store"
 import { userAddrEvm } from "$lib/wallet/evm"
 import { userAddrCosmos } from "$lib/wallet/cosmos"
 import AssetsDialog from "../routes/transfer/(components)/assets-dialog.svelte"
+import { Input } from "$lib/components/ui/input/index.js"
 
 import * as Card from "$lib/components/ui/card/index.ts"
 import { UnionClient } from "@union/client"
 import { Button } from "$lib/components/ui/button"
 import type { Chain, UserAddresses } from "$lib/types.ts"
-import { encodeFunctionData, formatUnits } from 'viem'
+import { encodeFunctionData, formatUnits, parseUnits } from 'viem'
 import { bexActionsAbi, evmVoiceAbi, ibcTokenActionsAbi } from '$lib/swap/abis.ts'
 import { truncate } from '$lib/utilities/format.ts'
 import CardSectionHeading from '../routes/transfer/(components)/card-section-heading.svelte'
@@ -22,37 +23,129 @@ import { readContract } from '@wagmi/core'
 import { config } from '$lib/wallet/evm/config.ts'
 import { rawToBech32 } from '$lib/utilities/address.ts'
 import { cosmosToEvmAddress } from '$lib/wallet/utilities/derive-address.ts'
+import { userBalancesQuery } from "./queries/balance";
+import { cn } from "./utilities/shadcn";
+
+const FROM_CHAIN_ID = "union-testnet-8"
+const TO_CHAIN_ID = "80084"
 
 
 export let chains: Array<Chain>
 
-let fromChainId = writable("")
-let toChainId = writable("")
+// CURRENT FORM STATE
+let fromChainId = writable(FROM_CHAIN_ID)
+let toChainId = writable(TO_CHAIN_ID)
+
+$: userBalances = userBalancesQuery({ chains, userAddr: $userAddr, connected: true })
+
+$: sendableBalances = derived([fromChainId, userBalances], ([$fromChainId, $userBalances]) => {
+  if (!$fromChainId) return
+  const chainIndex = chains.findIndex(c => c.chain_id === $fromChainId)
+  const cosmosBalance = $userBalances[chainIndex]
+  if (!cosmosBalance?.isSuccess || cosmosBalance.data instanceof Error) {
+    console.log("trying to send from cosmos but no balances fetched yet")
+    return null
+  }
+  return cosmosBalance.data.map(balance => ({ ...balance, balance: BigInt(balance.balance) }))
+})
+
+
+let prevFromAsset: string
+$: fromAsset = derived(
+  [fromChain, userBalances, fromAssetAddress],
+  ([$chain, $userBalances, $assetAddress]) => {
+    if ($chain === null || $assetAddress === "") return null
+
+    const chainIndex = chains.findIndex(c => c.chain_id === $chain.chain_id)
+    const userBalance = $userBalances[chainIndex]
+    if (!userBalance.isSuccess) {
+      return null
+    }
+    let balance = userBalance.data.find(balance => balance.address === $assetAddress)
+    if (!balance) {
+      return null
+    }
+    if (prevFromAsset !== balance.address) amount = ""
+    prevFromAsset = balance.address
+    return balance
+  }
+)
+
+let supportedFromAsset: any
+$: if ($fromChain && $fromAsset) supportedFromAsset = getSupportedAsset($fromChain, $fromAsset.address)
+
+let prevToAsset: string
+$: toAsset = derived(
+  [toChain, userBalances, toAssetAddress],
+  ([$chain, $userBalances, $assetAddress]) => {
+    if ($chain === null || $assetAddress === "") return null
+
+    const chainIndex = chains.findIndex(c => c.chain_id === $chain.chain_id)
+    const userBalance = $userBalances[chainIndex]
+    if (!userBalance.isSuccess) {
+      return null
+    }
+    let balance = userBalance.data.find(balance => balance.address === $assetAddress)
+    if (!balance) {
+      return null
+    }
+    if (prevToAsset !== balance.address) amount = ""
+    prevToAsset = balance.address
+    return balance
+  }
+)
+
+let supportedToAsset: any
+$: if ($toChain && $toAsset) supportedToAsset = getSupportedAsset($toChain, $toAsset.address)
+
+
+let amount = ""
+$: amountLargerThanZero = Number.parseFloat(amount) > 0
+
+const amountRegex = /[^0-9.]|\.(?=\.)|(?<=\.\d+)\./g
+$: amount = amount.replaceAll(amountRegex, "")
+
+let balanceCoversAmount: boolean
+$: if ($fromChain && $fromAsset && amount) {
+  try {
+    const supported = getSupportedAsset($fromChain, $fromAsset.address)
+    const decimals = supported ? supported?.decimals : 0
+    const inputAmount = parseUnits(amount.toString(), decimals)
+    const balance = BigInt($fromAsset.balance.toString())
+    balanceCoversAmount = inputAmount <= balance
+  } catch (error) {
+    console.error("Error parsing amount or balance:", error)
+  }
+}
 
 // let toChain = derived(
 //   toChainId,
 //   $toChainId => chains.find(chain => chain.chain_id === $toChainId) ?? null
 // )
 
-let toChain = derived(fromChainId, () => chains.find(chain => chain.chain_id === "bartio") ?? null)
+let toChain = derived(fromChainId, () => chains.find(chain => chain.chain_id === "80084") ?? null)
 
 let fromChain = derived(
   fromChainId,
   $fromChainId => chains.find(chain => chain.chain_id === $fromChainId) ?? null
 )
 
-let dialogOpenToken = false
+let dialogOpenFromToken = false
+let dialogOpenToToken = false
 let dialogOpenToChain = false
 let dialogOpenFromChain = false
 
-let assetSymbol = writable("")
-let assetAddress = writable("")
+let fromAssetSymbol = writable("")
+let fromAssetAddress = writable("")
+let toAssetSymbol = writable("")
+let toAssetAddress = writable("")
 
-$: swappableTokens = derived([toChainId], ([$toChainId]) =>  [{
+// TODO: retrieve these from the actual swap factories
+$: swapToTokens = derived([toChainId], ([$toChainId]) =>  [{
   symbol: 'HONEY',
   name: 'Honey',
   address: '0x0E4aaF1351de4c0264C5c7056Ef3777b41BD8e03',
-  balance: 0
+  balance: BigInt(0)
 }])
 
 let userAddr: Readable<UserAddresses> = derived(
@@ -63,14 +156,18 @@ let userAddr: Readable<UserAddresses> = derived(
   })
 )
 
-
-const BERACHAIN_CONTRACTS = {
-  evm_voice: '0x27485bC91038A1cC8642170cBdEBE0725829f49d',
-  ibc_handler: "0x851c0EB711fe5C7c8fe6dD85d9A0254C8dd11aFD",
-  ucs01_handler: "0x6F270608fB562133777AF0f71F6386ffc1737C30",
-  bex_actions: '0xD7B680Ce6444E162AcD35D6213cFE75B3F3af1d5',
-  ibc_actions: '0x00d14FB2734690E18D06f62656cbAb048B694AE1'
+const EVM_CONTRACTS = {
+  bartio: {
+    evm_voice: '0x27485bC91038A1cC8642170cBdEBE0725829f49d',
+    ibc_handler: "0x851c0EB711fe5C7c8fe6dD85d9A0254C8dd11aFD",
+    ucs01_handler: "0x6F270608fB562133777AF0f71F6386ffc1737C30",
+    bex_actions: '0xD7B680Ce6444E162AcD35D6213cFE75B3F3af1d5',
+    ibc_actions: '0x00d14FB2734690E18D06f62656cbAb048B694AE1'
+  }
 } as const
+
+const BERACHAIN_CONTRACTS = EVM_CONTRACTS['bartio']
+
 
 const UNION_CONTRACTS = {
   evm_note: 'union10qdttl5qnqfsuvm852zrfysqkuydn0hwz6xe5472tv5590v95zhs49fdlh',
@@ -107,7 +204,7 @@ const swap = async () => {
       port: `wasm.${UNION_CONTRACTS.evm_note}`,
       sender: cosmosAddress
     }]
-  })
+  }) as string
 
   console.log(evmProxyAddress);
 
@@ -216,7 +313,61 @@ const swap = async () => {
       </Card.Description>
     </Card.Header>
       <Card.Content>
-        <ChainButton bind:dialogOpen={dialogOpenFromChain} bind:selectedChainId={$fromChainId}>{$fromChain?.display_name ?? "Select from chain"}</ChainButton>
+        <section>
+          <ChainButton bind:dialogOpen={dialogOpenFromChain} bind:selectedChainId={$fromChainId}>{$fromChain?.display_name ?? "Select from chain"}</ChainButton>
+        </section>
+        <section>
+          <CardSectionHeading>Asset</CardSectionHeading>
+          {#if $sendableBalances !== undefined && $fromChainId}
+            {#if $sendableBalances === null}
+              Failed to load sendable balances for <b>{$fromChain?.display_name}</b>.
+            {:else if $sendableBalances && $sendableBalances.length === 0}
+              You don't have sendable assets on <b>{$fromChain?.display_name}</b>. You can get some from <a
+              class="underline font-bold" href="/faucet">the faucet</a>
+            {:else}
+              <Button
+                class="w-full"
+                variant="outline"
+                on:click={() => (dialogOpenFromToken = !dialogOpenFromToken)}
+              >
+                <div
+                  class="flex-1 text-left font-bold text-md">{truncate(supportedFromAsset ? supportedFromAsset.display_symbol : $fromAssetSymbol ? $fromAssetSymbol : 'Select Asset', 12)}</div>
+
+                <Chevron/>
+              </Button>
+            {/if}
+          {:else}
+            Select a chain to swap from.
+          {/if}
+          {#if $fromAssetSymbol !== '' && $sendableBalances !== null && $fromAsset?.address}
+            <div class="mt-4 text-xs text-muted-foreground">
+              <b>{truncate(supportedFromAsset ? supportedFromAsset?.display_symbol : $fromAssetSymbol, 12)}</b> balance on
+              <b>{$fromChain?.display_name}</b> is
+              {formatUnits(BigInt($fromAsset.balance), supportedFromAsset?.decimals ?? 0)}
+            </div>
+          {/if}
+        </section>
+        <section>
+          <CardSectionHeading>Amount</CardSectionHeading>
+          <Input
+            autocapitalize="none"
+            autocomplete="off"
+            autocorrect="off"
+            type="number"
+            inputmode="decimal"
+            bind:value={amount}
+            class={cn(
+              !balanceCoversAmount && amount ? 'border-red-500' : '',
+              'focus:ring-0 focus-visible:ring-0 disabled:bg-black/30',
+            )}
+            disabled={!$fromAsset}
+            maxlength={64}
+            minlength={1}
+            pattern="^[0-9]*[.,]?[0-9]*$"
+            placeholder="0.00"
+            spellcheck="false"
+          />
+        </section>
       </Card.Content>
     </Card.Root>
     <Card.Root class="max-w-xl flex flex-col w-full">
@@ -229,6 +380,39 @@ const swap = async () => {
       <Card.Content>
         <section>
           <ChainButton bind:dialogOpen={dialogOpenToChain} bind:selectedChainId={$toChainId}>{$toChain?.display_name ?? "Select chain"}</ChainButton>
+        </section>
+        <section>
+          <CardSectionHeading>Asset</CardSectionHeading>
+          {#if $swapToTokens !== undefined && $toChainId}
+            {#if $swapToTokens === null}
+              Failed to load sendable balances for <b>{$toChain?.display_name}</b>.
+            {:else if $swapToTokens && $swapToTokens.length === 0}
+              No swaps are available on <b>{$toChain?.display_name}</b>. Please select a different chains.
+            {:else}
+              <Button
+                class="w-full"
+                variant="outline"
+                on:click={() => (dialogOpenToToken = !dialogOpenToToken)}
+              >
+                <div
+                  class="flex-1 text-left font-bold text-md">{truncate(supportedToAsset ? supportedToAsset.display_symbol : $toAssetSymbol ? $toAssetSymbol : 'Select Asset', 12)}</div>
+
+                <Chevron/>
+              </Button>
+            {/if}
+          {:else}
+            Select a chain to swap from.
+          {/if}
+          {#if $toAssetSymbol !== '' && $swapToTokens !== null && $toAsset?.address}
+            <div class="mt-4 text-xs text-muted-foreground">
+              <b>{truncate(supportedToAsset ? supportedToAsset?.display_symbol : $toAssetSymbol, 12)}</b> balance on
+              <b>{$toChain?.display_name}</b> is
+              {formatUnits(BigInt($toAsset.balance), supportedToAsset?.decimals ?? 0)}
+            </div>
+          {/if}
+        </section>
+        <section>
+          <CardSectionHeading>Amount</CardSectionHeading>
         </section>
       </Card.Content>
     </Card.Root>
@@ -267,15 +451,30 @@ const swap = async () => {
 
 </ChainsGate>
 
+<!-- From chain asset selector -->
+{#if $fromChain !== null}
+  <AssetsDialog
+    chain={$fromChain}
+    assets={$sendableBalances}
+    onAssetSelect={asset => {
+      console.log('Selected Asset: ', asset)
+      fromAssetSymbol.set(asset.symbol)
+      fromAssetAddress.set(asset.address)
+    }}
+    bind:dialogOpen={dialogOpenFromToken}
+  />
+{/if}
+
+<!-- To chain asset selector -->
 {#if $toChain !== null}
   <AssetsDialog
-        chain={$toChain}
-        assets={$swappableTokens}
-        onAssetSelect={asset => {
-          console.log('Selected Asset: ', asset)
-          assetSymbol.set(asset.symbol)
-          assetAddress.set(asset.address)
-        }}
-        bind:dialogOpen={dialogOpenToken}
+    chain={$toChain}
+    assets={$swapToTokens}
+    onAssetSelect={asset => {
+      console.log('Selected Swap To Asset: ', asset)
+      toAssetSymbol.set(asset.symbol)
+      toAssetAddress.set(asset.address)
+    }}
+    bind:dialogOpen={dialogOpenToToken}
   />
 {/if}
