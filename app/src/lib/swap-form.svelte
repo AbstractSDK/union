@@ -28,7 +28,7 @@ import { cn } from "./utilities/shadcn";
 import { BERACHAIN_CONTRACTS, SWAPPABLE_ASSETS, UNION_CONTRACTS } from "./swap/constants";
 import { bexSwapEstimateQuery } from "./swap/queries"
 import { toast } from "svelte-sonner";
-    import { bexSwapActionMsg, sendFullBalanceBackMsg as sendFullBalanceBackActionMsg } from "./swap/actions";
+    import { bexSwapActionMsg, sendFullBalanceBackMsg as sendFullBalanceBackActionMsg, swapActionMsg } from "./swap/actions";
 
 const ENABLED_FROM_CHAIN_IDS = ["union-testnet-8"]
 const ENABLED_TO_CHAIN_IDS = ["80084"]
@@ -189,13 +189,15 @@ const swap = async () => {
     address: BERACHAIN_CONTRACTS.evm_voice,
     functionName: 'getExpectedProxyAddress',
     args: [{
+      // connection from evm -> union
       connection: 'connection-0',
+      // port on union
       port: `wasm.${UNION_CONTRACTS.evm_note}`,
       sender: cosmosAddress
     }]
   }) as string
 
-  console.log(evmProxyAddress);
+  console.log(`evmProxyAddress for ${cosmosAddress}: ${evmProxyAddress}`);
 
   await cosmosClient.transferAssets(
     {
@@ -219,39 +221,36 @@ const swap = async () => {
 
   // TODO: wait for transfer to be confirmed
 
-  const evmNoteMsg = {
-    kind: "cosmwasm",
-    instructions: [
-      {
-        contractAddress: UNION_CONTRACTS.evm_note,
-        msg: {
-          execute: {
-            msgs: [
-              // swap
-              bexSwapActionMsg({
-                // TODO: how do we dynamically resolve this?
-                // $fromAsset, but on toChain (uno on bera)
-                baseAsset: BERACHAIN_CONTRACTS.muno,
-                quoteAsset: $toAssetAddress,
-                swapAmount: parsedSwapAmount
-              }),
-              // send
-              sendFullBalanceBackActionMsg({
-                evmChainId: '80084',
-                tokens: [$toAssetAddress],
-                unionReceiverAddress: cosmosAddress
-              }),
-            ],
-            callback: null,
-            timeout_seconds: "5000000"
-          }
+  const evmNoteMsg = [
+    {
+      contractAddress: UNION_CONTRACTS.evm_note,
+      msg: {
+        execute: {
+          msgs: [
+            // swap
+            swapActionMsg({
+              evmChainId: '80084',
+              // TODO: how do we dynamically resolve this?
+              // $fromAsset, but on toChain (uno on bera)
+              baseAsset: BERACHAIN_CONTRACTS.muno,
+              quoteAsset: $toAssetAddress,
+              swapAmount: parsedSwapAmount
+            }),
+            // send
+            sendFullBalanceBackActionMsg({
+              evmChainId: '80084',
+              tokens: [$toAssetAddress],
+              unionReceiverAddress: cosmosAddress
+            }),
+          ],
+          callback: null,
+          timeout_seconds: "5000000"
         }
       }
-    ]
-  }
+    }
+  ]
 
-  // @ts-ignore
-  const cosmosTransfer = await cosmosClient.transferAssets(evmNoteMsg)
+  const cosmosTransfer = await cosmosClient.cosmwasmMessageExecuteContract(evmNoteMsg)
   console.log(`https://explorer.nodestake.org/union-testnet/tx/${cosmosTransfer.transactionHash}`)
 }
 </script>

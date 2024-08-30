@@ -1,3 +1,4 @@
+// Actions to perform on the EVM side using Abstract Action contracts
 import { encodeFunctionData } from 'viem';
 import { EVM_CONTRACTS, UCS01_CHANNELS } from './constants';
 import { bexActionsAbi, ibcTokenActionsAbi } from './abis';
@@ -19,7 +20,9 @@ type EvmMsg = {
   }
 }
 
-export const sendFullBalanceBackMsg = ({ evmChainId, tokens, unionReceiverAddress }: { evmChainId: keyof typeof EVM_CONTRACTS, tokens: string[], unionReceiverAddress: `union${string}` }): EvmMsg => {
+type SupportedEvmChainId = keyof typeof EVM_CONTRACTS
+
+export const sendFullBalanceBackMsg = ({ evmChainId, tokens, unionReceiverAddress }: { evmChainId: SupportedEvmChainId, tokens: string[], unionReceiverAddress: `union${string}` }): EvmMsg => {
   const ibcActionsAddress = EVM_CONTRACTS[evmChainId].ibc_actions
   return {
     delegate_call: {
@@ -49,10 +52,19 @@ export const sendFullBalanceBackMsg = ({ evmChainId, tokens, unionReceiverAddres
   }
 }
 
+type SwapActionParams = { baseAsset: string, quoteAsset: string, swapAmount: bigint }
+
+export const swapActionMsg = ({ evmChainId, baseAsset, quoteAsset, swapAmount }: { evmChainId: SupportedEvmChainId } & SwapActionParams): EvmMsg => {
+  if (evmChainId === '80084') {
+    return bexSwapActionMsg({ baseAsset, quoteAsset, swapAmount })
+  }
+  throw new Error('Unsupported chain id')
+}
+
 /**
- * Actions to perform on bexswap specifically. TODO: genericize.
+ * Actions to perform on bexswap specifically.
  */
-export const bexSwapActionMsg = ({ baseAsset, quoteAsset, swapAmount }: { baseAsset: string; quoteAsset: string; swapAmount: bigint }): EvmMsg => {
+export const bexSwapActionMsg = ({ baseAsset, quoteAsset, swapAmount }: SwapActionParams): EvmMsg => {
 
   const bexSwapActionsAddress = EVM_CONTRACTS['80084'].bex_actions
 
@@ -76,3 +88,4 @@ export const bexSwapActionMsg = ({ baseAsset, quoteAsset, swapAmount }: { baseAs
     // allow_failure: true
   }
 }
+
