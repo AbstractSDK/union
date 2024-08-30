@@ -3,6 +3,8 @@ import { encodeFunctionData } from 'viem';
 import { EVM_CONTRACTS, UCS01_CHANNELS } from './constants';
 import { bexActionsAbi, ibcTokenActionsAbi } from './abis';
 import { cosmosToEvmAddress } from '$lib/wallet/utilities/derive-address';
+import { isSupportedChainId } from './helpers';
+import type { EvmAddress } from '$lib/wallet/types';
 
 type EvmMsg = {
   call: {
@@ -20,9 +22,11 @@ type EvmMsg = {
   }
 }
 
-type SupportedEvmChainId = keyof typeof EVM_CONTRACTS
+export const sendFullBalanceBackMsg = ({ evmChainId, tokens, unionReceiverAddress }: { evmChainId: string, tokens: string[], unionReceiverAddress: `union${string}` }): EvmMsg => {
+  if (!isSupportedChainId(evmChainId)) {
+    throw new Error(`Unsupported chain id: ${evmChainId}`)
+  }
 
-export const sendFullBalanceBackMsg = ({ evmChainId, tokens, unionReceiverAddress }: { evmChainId: SupportedEvmChainId, tokens: string[], unionReceiverAddress: `union${string}` }): EvmMsg => {
   const ibcActionsAddress = EVM_CONTRACTS[evmChainId].ibc_actions
   return {
     delegate_call: {
@@ -47,18 +51,21 @@ export const sendFullBalanceBackMsg = ({ evmChainId, tokens, unionReceiverAddres
           }
         ]
       }).slice(2),
-      // allow_failure: true
+      allow_failure: true
     }
   }
 }
 
-type SwapActionParams = { baseAsset: string, quoteAsset: string, swapAmount: bigint }
+type SwapActionParams = { baseAsset: EvmAddress, quoteAsset: EvmAddress, swapAmount: bigint }
 
-export const swapActionMsg = ({ evmChainId, baseAsset, quoteAsset, swapAmount }: { evmChainId: SupportedEvmChainId } & SwapActionParams): EvmMsg => {
-  if (evmChainId === '80084') {
-    return bexSwapActionMsg({ baseAsset, quoteAsset, swapAmount })
+export const swapActionMsg = ({ evmChainId, baseAsset, quoteAsset, swapAmount }: { evmChainId: string } & SwapActionParams): EvmMsg => {
+  switch (evmChainId) {
+    case '80084': {
+      return bexSwapActionMsg({ baseAsset, quoteAsset, swapAmount })
+    }
+    default:
+      throw new Error(`Unsupported chain id: ${evmChainId}`)
   }
-  throw new Error('Unsupported chain id')
 }
 
 /**
@@ -84,8 +91,8 @@ export const bexSwapActionMsg = ({ baseAsset, quoteAsset, swapAmount }: SwapActi
           }
         ]
       }).slice(2),
+      allow_failure: true
     },
-    // allow_failure: true
   }
 }
 

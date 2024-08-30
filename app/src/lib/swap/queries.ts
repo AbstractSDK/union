@@ -1,8 +1,9 @@
 import { createQuery } from '@tanstack/svelte-query';
 import { readContract } from '@wagmi/core';
-import { crocImpactAbi } from "./abis";
-import { BERACHAIN_CONTRACTS } from './constants'; // Assuming you have this import
+import { crocImpactAbi, evmVoiceAbi } from "./abis";
+import { BERACHAIN_CONTRACTS, UNION_CONTRACTS } from './constants'; // Assuming you have this import
 import { config } from '$lib/wallet/evm/config';
+import type { EvmAddress } from '$lib/wallet/types';
 
 export const bexSwapEstimateQuery = ({ baseAsset, quoteAsset, baseAmount }: { baseAsset: string | undefined; quoteAsset: string | undefined; baseAmount: bigint }) => {
   return createQuery({
@@ -33,3 +34,25 @@ export const bexSwapEstimateQuery = ({ baseAsset, quoteAsset, baseAmount }: { ba
     enabled: !!baseAsset && !!quoteAsset && !!baseAmount,
   });
 };
+
+export const evmProxyAddressQuery = ({ cosmosAddress, connectionId }: { cosmosAddress: `union${string}` | null; connectionId: string }) => (createQuery({
+  queryKey: ['evmProxyAddress', cosmosAddress],
+  queryFn: async () => {
+    if (!cosmosAddress) throw new Error('Cosmos address is required')
+
+    return readContract(config, {
+      chainId: 80084, // TODO: Don't hardcode this
+      abi: evmVoiceAbi,
+      address: BERACHAIN_CONTRACTS.evm_voice,
+      functionName: 'getExpectedProxyAddress',
+      args: [{
+        // connection from evm -> union
+        connection: connectionId,
+        // port on union
+        port: `wasm.${UNION_CONTRACTS.evm_note}`,
+        sender: cosmosAddress
+      }]
+    }) as Promise<EvmAddress>
+  },
+  enabled: !!cosmosAddress
+}))

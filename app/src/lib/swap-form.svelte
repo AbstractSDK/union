@@ -1,34 +1,31 @@
 <script lang="ts">
-import ChainsGate from "$lib/components/chains-gate.svelte"
-import ChainDialog from "../routes/transfer/(components)/chain-dialog.svelte"
-import ChainButton from "../routes/transfer/(components)/chain-button.svelte"
-import { derived, writable, type Readable } from "svelte/store"
-import { userAddrEvm } from "$lib/wallet/evm"
-import { userAddrCosmos } from "$lib/wallet/cosmos"
-import AssetsDialog from "../routes/transfer/(components)/assets-dialog.svelte"
-import { Input } from "$lib/components/ui/input/index.js"
+import ChainsGate from "$lib/components/chains-gate.svelte";
+import { Input } from "$lib/components/ui/input/index.js";
+import { userAddrCosmos } from "$lib/wallet/cosmos";
+import { userAddrEvm } from "$lib/wallet/evm";
+import { derived, writable, type Readable } from "svelte/store";
+import AssetsDialog from "../routes/transfer/(components)/assets-dialog.svelte";
+import ChainButton from "../routes/transfer/(components)/chain-button.svelte";
+import ChainDialog from "../routes/transfer/(components)/chain-dialog.svelte";
 
-import * as Card from "$lib/components/ui/card/index.ts"
-import { UnionClient } from "@union/client"
-import { Button } from "$lib/components/ui/button"
-import type { Chain, UserAddresses } from "$lib/types.ts"
-import { encodeFunctionData, formatUnits, parseUnits } from 'viem'
-import { bexActionsAbi, evmVoiceAbi, ibcTokenActionsAbi } from '$lib/swap/abis.ts'
-import { truncate } from '$lib/utilities/format.ts'
-import CardSectionHeading from '../routes/transfer/(components)/card-section-heading.svelte'
-import Chevron from '../routes/transfer/(components)/chevron.svelte'
-import { getSupportedAsset } from '$lib/utilities/helpers.ts'
-import { sepolia, berachainTestnetbArtio, arbitrumSepolia } from "viem/chains"
-import { readContract } from '@wagmi/core'
-import { config } from '$lib/wallet/evm/config.ts'
-import { rawToBech32 } from '$lib/utilities/address.ts'
-import { cosmosToEvmAddress } from '$lib/wallet/utilities/derive-address.ts'
-import { userBalancesQuery } from "./queries/balance";
-import { cn } from "./utilities/shadcn";
-import { BERACHAIN_CONTRACTS, SWAPPABLE_ASSETS, UNION_CONTRACTS } from "./swap/constants";
-import { bexSwapEstimateQuery } from "./swap/queries"
+import { Button } from "$lib/components/ui/button";
+import * as Card from "$lib/components/ui/card/index.ts";
+import type { Chain, UserAddresses } from "$lib/types.ts";
+import { rawToBech32 } from '$lib/utilities/address.ts';
+import { truncate } from '$lib/utilities/format.ts';
+import { getSupportedAsset } from '$lib/utilities/helpers.ts';
+import { UnionClient } from "@union/client";
 import { toast } from "svelte-sonner";
-    import { bexSwapActionMsg, sendFullBalanceBackMsg as sendFullBalanceBackActionMsg, swapActionMsg } from "./swap/actions";
+import { formatUnits, parseUnits } from 'viem';
+import CardSectionHeading from '../routes/transfer/(components)/card-section-heading.svelte';
+import Chevron from '../routes/transfer/(components)/chevron.svelte';
+import { userBalancesQuery } from "./queries/balance";
+import { PAIRS, SWAPPABLE_ASSETS } from "./swap/constants";
+import { isSupportedChainId as isSwapSupportedChainId } from "./swap/helpers";
+import { createEvmSwapMutation, createTransferToEvmMutation } from './swap/mutations';
+import { evmProxyAddressQuery } from "./swap/queries";
+import { cn } from "./utilities/shadcn";
+import type { EvmAddress } from "./wallet/types";
 
 const ENABLED_FROM_CHAIN_IDS = ["union-testnet-8"]
 const ENABLED_TO_CHAIN_IDS = ["80084"]
@@ -138,11 +135,24 @@ let fromAssetAddress = writable("")
 let toAssetSymbol = writable("")
 let toAssetAddress = writable("")
 
-// TODO: retrieve these from the actual swap factories
-$: swapToTokens = derived([toChainId], ([$toChainId]) =>  (SWAPPABLE_ASSETS[$toChainId as keyof typeof SWAPPABLE_ASSETS] || []).map(asset => ({
-  ...asset,
-  balance: BigInt(0)
-})))
+$: swapToTokens = derived([toChainId, fromAsset, fromChain], ([$toChainId, $fromAsset, $fromChain]) => {
+  if (!isSwapSupportedChainId($toChainId)) return []
+
+  const swappableAssets = SWAPPABLE_ASSETS[$toChainId] || [];
+  // if we don't have any assets selected from, we can return them all
+  if (!$fromAsset || !$fromChain) return swappableAssets.map(asset => ({ ...asset, balance: BigInt(0) }));
+
+  const supportedFromAsset = getSupportedAsset($fromChain, $fromAsset.address)
+  if (!supportedFromAsset) return []
+
+  const availablePairs = PAIRS[$toChainId] || [];
+  const swappablePairs = swappableAssets
+  .filter(asset => availablePairs.some(pair => pair.includes(asset.display_symbol)))
+
+  return swappablePairs
+    .filter(asset => asset.display_symbol !== supportedFromAsset.display_symbol)
+    .map(asset => ({ ...asset, balance: BigInt(0) }));
+});
 
 let userAddr: Readable<UserAddresses> = derived(
   [userAddrCosmos, userAddrEvm],
@@ -152,7 +162,22 @@ let userAddr: Readable<UserAddresses> = derived(
   })
 )
 
-const SWAP_AMOUNT = 7
+let unionAddr = derived(
+  [userAddrCosmos],
+  ([$userAddrCosmos]) => {
+    if (!$userAddrCosmos) return null
+    return rawToBech32("union", $userAddrCosmos.bytes) as `union${string}`
+  }
+)
+
+$: evmProxyAddress = evmProxyAddressQuery({
+  cosmosAddress: $unionAddr,
+  // TODO: don't hardcode the connection
+  connectionId: 'connection-0'
+})
+
+$: transferToEvmMutation = createTransferToEvmMutation();
+$: swapMutation = createEvmSwapMutation();
 
 const swap = async () => {
   if (!$fromChain) return toast.error("can't find fromChain in config")
@@ -160,98 +185,55 @@ const swap = async () => {
   if (!$toChain) return toast.error("can't find toChain in config")
   if (!$fromAsset) return toast.error(`Error finding fromAsset`)
   if (!swapAmount) return toast.error("Please select an amount")
+  if (!$unionAddr) return toast.error("Could not derive union address")
+  if (!$evmProxyAddress.data) return toast.error("Could not derive evm proxy address")
+  if (!isSwapSupportedChainId($toChainId)) return toast.error(`"Swap not supported on ${$toChain?.display_name}"`)
 
-  let supported = getSupportedAsset($fromChain, $fromAsset.address)
-  let decimals = supported?.decimals ?? 0
-  let parsedSwapAmount = parseUnits(swapAmount, decimals)
+  const fromAssetEvmAddress = SWAPPABLE_ASSETS[$toChainId].find(({ unionDenom }) => $fromAsset.address === unionDenom)?.address
+  if (!fromAssetEvmAddress) return toast.error(`Could not find EVM address for ${$fromAsset.address}`)
+
+  console.log(`evmProxy: https://bartio.beratrail.io/address/${$evmProxyAddress.data}/internalTx`)
+
+  const supportedFromAsset = getSupportedAsset($fromChain, $fromAsset.address)
+  const fromAssetDecimals = supportedFromAsset?.decimals ?? 0
+  const parsedSwapAmount = parseUnits(swapAmount, fromAssetDecimals)
 
   const cosmosOfflineSigner = window?.keplr?.getOfflineSigner($fromChainId, {
     disableBalanceCheck: false
-  })
+  });
 
-  // TODO: don't hardcode union
-  const cosmosClient = new UnionClient({
+  const unionClient = new UnionClient({
     cosmosOfflineSigner,
     evmSigner: undefined,
     bech32Prefix: "union",
     chainId: $fromChainId,
     gas: { denom: "UNO", amount: "0.0025" },
     rpcUrl: `https://rpc.testnet-8.union.build`
-  })
+  });
 
-  const cosmosAddress = await cosmosClient.getCosmosSdkAccount().then(({ address }) => address) as `union${string}`;
-
-  // Queries for users proxy address on bartio
-  const evmProxyAddress = await readContract(config, {
+  $transferToEvmMutation.mutate({
+    unionClient: unionClient,
+    asset: {
+      denom: $fromAssetAddress,
+      amount: parsedSwapAmount
+    },
     // TODO: don't hardcode
-    chainId: 80084,
-    abi: evmVoiceAbi,
-    address: BERACHAIN_CONTRACTS.evm_voice,
-    functionName: 'getExpectedProxyAddress',
-    args: [{
-      // connection from evm -> union
-      connection: 'connection-0',
-      // port on union
-      port: `wasm.${UNION_CONTRACTS.evm_note}`,
-      sender: cosmosAddress
-    }]
-  }) as string
+    channelId: "channel-86",
+    receiver: $evmProxyAddress.data,
+  }, {
+    onSuccess: () => {
+      console.log("Successfully transferred to EVM")
 
-  console.log(`evmProxyAddress for ${cosmosAddress}: ${evmProxyAddress}`);
-
-  await cosmosClient.transferAssets(
-    {
-      kind: "cosmwasm",
-      instructions: [
-        {
-          contractAddress: UNION_CONTRACTS.ucs01_forwarder,
-          msg: {
-            transfer: {
-              // TODO: don't hardcode
-              // Bartio channel id
-              channel: "channel-86",
-              receiver: evmProxyAddress.slice(2),
-              memo: ""
-            }
-          },
-          funds: [{ denom: $fromAsset.address, amount: parsedSwapAmount.toString() }]
-        }
-      ]
-    })
-
-  // TODO: wait for transfer to be confirmed
-
-  const evmNoteMsg = [
-    {
-      contractAddress: UNION_CONTRACTS.evm_note,
-      msg: {
-        execute: {
-          msgs: [
-            // swap
-            swapActionMsg({
-              evmChainId: '80084',
-              // TODO: how do we dynamically resolve this?
-              // $fromAsset, but on toChain (uno on bera)
-              baseAsset: BERACHAIN_CONTRACTS.muno,
-              quoteAsset: $toAssetAddress,
-              swapAmount: parsedSwapAmount
-            }),
-            // send
-            sendFullBalanceBackActionMsg({
-              evmChainId: '80084',
-              tokens: [$toAssetAddress],
-              unionReceiverAddress: cosmosAddress
-            }),
-          ],
-          callback: null,
-          timeout_seconds: "5000000"
-        }
-      }
-    }
-  ]
-
-  const cosmosTransfer = await cosmosClient.cosmwasmMessageExecuteContract(evmNoteMsg)
-  console.log(`https://explorer.nodestake.org/union-testnet/tx/${cosmosTransfer.transactionHash}`)
+      $swapMutation.mutate({
+        unionClient: unionClient,
+        toChain: $toChain,
+        fromAssetAddress: fromAssetEvmAddress,
+        toAssetAddress: $toAssetAddress as EvmAddress,
+        amount: parsedSwapAmount,
+        receiverAddrUnion: $unionAddr,
+      });
+    },
+  })
 }
 </script>
 
@@ -327,7 +309,7 @@ const swap = async () => {
     <Card.Header>
       <Card.Title>To</Card.Title>
       <Card.Description>
-        Chain to swap where the swap will be performed on
+        Chain where the swap will be performed
       </Card.Description>
     </Card.Header>
       <Card.Content>
@@ -371,12 +353,14 @@ const swap = async () => {
         swap()
       }}
       type="button"
+      disabled={$transferToEvmMutation.isPending || $swapMutation.isPending || !amountLargerThanZero || !balanceCoversAmount}
     >
-      Swap
+      {$transferToEvmMutation.isPending ? "Transfering..." : $swapMutation.isPending ? "Swapping..." : "Swap"}
     </Button>
   </div>
 
 
+  <!-- FROM CHAIN -->
   <ChainDialog
     bind:dialogOpen={dialogOpenFromChain}
     chains={chains.filter(c => c.enabled_staging).filter(c => ENABLED_FROM_CHAIN_IDS.includes(c.chain_id))}
@@ -388,12 +372,15 @@ const swap = async () => {
     userAddr={$userAddr}
   />
 
+  <!-- TO CHAIN -->
   <ChainDialog
     bind:dialogOpen={dialogOpenToChain}
     chains={chains.filter(c => c.enabled_staging).filter(c => ENABLED_TO_CHAIN_IDS.includes(c.chain_id))}
     kind="to"
     onChainSelect={newSelectedChain => {
       toChainId.set(newSelectedChain)
+      toAssetSymbol.set("")
+      toAssetAddress.set("")
     }}
     selectedChain={$toChainId}
     userAddr={$userAddr}
@@ -410,6 +397,8 @@ const swap = async () => {
       console.log('Selected Asset: ', asset)
       fromAssetSymbol.set(asset.symbol)
       fromAssetAddress.set(asset.address)
+      toAssetSymbol.set("")
+      toAssetAddress.set("")
     }}
     bind:dialogOpen={dialogOpenFromToken}
   />
