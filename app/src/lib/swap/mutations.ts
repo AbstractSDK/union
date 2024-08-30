@@ -12,7 +12,7 @@ interface TransferToEvmParams {
     denom: string
     amount: bigint
   }
-  channelId: string
+  channelId: `channel-${string}`
   receiver: EvmAddress;
 }
 
@@ -30,7 +30,6 @@ export const createTransferToEvmMutation = () => createMutation({
           contractAddress: UNION_CONTRACTS.ucs01_forwarder,
           msg: {
             transfer: {
-              // TODO: don't hardcode
               channel: channelId,
               receiver: receiver.slice(2),
               memo: ""

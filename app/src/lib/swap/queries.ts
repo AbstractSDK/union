@@ -35,8 +35,8 @@ export const bexSwapEstimateQuery = ({ baseAsset, quoteAsset, baseAmount }: { ba
   });
 };
 
-export const evmProxyAddressQuery = ({ cosmosAddress, connectionId }: { cosmosAddress: `union${string}` | null; connectionId: string }) => (createQuery({
-  queryKey: ['evmProxyAddress', cosmosAddress],
+export const evmProxyAddressQuery = ({ cosmosAddress, connectionId, evmChainId }: { cosmosAddress: `union${string}` | null; connectionId: string, evmChainId: string }) => (createQuery({
+  queryKey: ['evmProxyAddress', evmChainId, cosmosAddress],
   queryFn: async () => {
     if (!cosmosAddress) throw new Error('Cosmos address is required')
 

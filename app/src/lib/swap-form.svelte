@@ -172,8 +172,9 @@ let unionAddr = derived(
 
 $: evmProxyAddress = evmProxyAddressQuery({
   cosmosAddress: $unionAddr,
-  // TODO: don't hardcode the connection
-  connectionId: 'connection-0'
+  // TODO: don't hardcode the connection as it will be different for different chains
+  connectionId: 'connection-0',
+  evmChainId: $toChainId
 })
 
 $: transferToEvmMutation = createTransferToEvmMutation();
