@@ -25,10 +25,15 @@ import { rawToBech32 } from '$lib/utilities/address.ts'
 import { cosmosToEvmAddress } from '$lib/wallet/utilities/derive-address.ts'
 import { userBalancesQuery } from "./queries/balance";
 import { cn } from "./utilities/shadcn";
+import { BERACHAIN_CONTRACTS, SWAPPABLE_ASSETS, UNION_CONTRACTS } from "./swap/constants";
+import { bexSwapEstimateQuery } from "./swap/queries"
+import { toast } from "svelte-sonner";
+    import { bexSwapActionMsg, sendFullBalanceBackMsg as sendFullBalanceBackActionMsg } from "./swap/actions";
 
-const FROM_CHAIN_ID = "union-testnet-8"
-const TO_CHAIN_ID = "80084"
-
+const ENABLED_FROM_CHAIN_IDS = ["union-testnet-8"]
+const ENABLED_TO_CHAIN_IDS = ["80084"]
+const FROM_CHAIN_ID = ENABLED_FROM_CHAIN_IDS[0]
+const TO_CHAIN_ID = ENABLED_TO_CHAIN_IDS[0]
 
 export let chains: Array<Chain>
 
@@ -49,7 +54,6 @@ $: sendableBalances = derived([fromChainId, userBalances], ([$fromChainId, $user
   return cosmosBalance.data.map(balance => ({ ...balance, balance: BigInt(balance.balance) }))
 })
 
-
 let prevFromAsset: string
 $: fromAsset = derived(
   [fromChain, userBalances, fromAssetAddress],
@@ -65,7 +69,7 @@ $: fromAsset = derived(
     if (!balance) {
       return null
     }
-    if (prevFromAsset !== balance.address) amount = ""
+    if (prevFromAsset !== balance.address) swapAmount = ""
     prevFromAsset = balance.address
     return balance
   }
@@ -89,7 +93,7 @@ $: toAsset = derived(
     if (!balance) {
       return null
     }
-    if (prevToAsset !== balance.address) amount = ""
+    if (prevToAsset !== balance.address) swapAmount = ""
     prevToAsset = balance.address
     return balance
   }
@@ -98,19 +102,18 @@ $: toAsset = derived(
 let supportedToAsset: any
 $: if ($toChain && $toAsset) supportedToAsset = getSupportedAsset($toChain, $toAsset.address)
 
-
-let amount = ""
-$: amountLargerThanZero = Number.parseFloat(amount) > 0
+let swapAmount = ""
+$: amountLargerThanZero = Number.parseFloat(swapAmount) > 0
 
 const amountRegex = /[^0-9.]|\.(?=\.)|(?<=\.\d+)\./g
-$: amount = amount.replaceAll(amountRegex, "")
+$: swapAmount = swapAmount.replaceAll(amountRegex, "")
 
 let balanceCoversAmount: boolean
-$: if ($fromChain && $fromAsset && amount) {
+$: if ($fromChain && $fromAsset && swapAmount) {
   try {
     const supported = getSupportedAsset($fromChain, $fromAsset.address)
     const decimals = supported ? supported?.decimals : 0
-    const inputAmount = parseUnits(amount.toString(), decimals)
+    const inputAmount = parseUnits(swapAmount.toString(), decimals)
     const balance = BigInt($fromAsset.balance.toString())
     balanceCoversAmount = inputAmount <= balance
   } catch (error) {
@@ -118,12 +121,7 @@ $: if ($fromChain && $fromAsset && amount) {
   }
 }
 
-// let toChain = derived(
-//   toChainId,
-//   $toChainId => chains.find(chain => chain.chain_id === $toChainId) ?? null
-// )
-
-let toChain = derived(fromChainId, () => chains.find(chain => chain.chain_id === "80084") ?? null)
+let toChain = derived(toChainId, () => chains.find(chain => chain.chain_id === $toChainId) ?? null)
 
 let fromChain = derived(
   fromChainId,
@@ -141,12 +139,10 @@ let toAssetSymbol = writable("")
 let toAssetAddress = writable("")
 
 // TODO: retrieve these from the actual swap factories
-$: swapToTokens = derived([toChainId], ([$toChainId]) =>  [{
-  symbol: 'HONEY',
-  name: 'Honey',
-  address: '0x0E4aaF1351de4c0264C5c7056Ef3777b41BD8e03',
+$: swapToTokens = derived([toChainId], ([$toChainId]) =>  (SWAPPABLE_ASSETS[$toChainId as keyof typeof SWAPPABLE_ASSETS] || []).map(asset => ({
+  ...asset,
   balance: BigInt(0)
-}])
+})))
 
 let userAddr: Readable<UserAddresses> = derived(
   [userAddrCosmos, userAddrEvm],
@@ -156,27 +152,19 @@ let userAddr: Readable<UserAddresses> = derived(
   })
 )
 
-const EVM_CONTRACTS = {
-  bartio: {
-    evm_voice: '0x27485bC91038A1cC8642170cBdEBE0725829f49d',
-    ibc_handler: "0x851c0EB711fe5C7c8fe6dD85d9A0254C8dd11aFD",
-    ucs01_handler: "0x6F270608fB562133777AF0f71F6386ffc1737C30",
-    bex_actions: '0xD7B680Ce6444E162AcD35D6213cFE75B3F3af1d5',
-    ibc_actions: '0x00d14FB2734690E18D06f62656cbAb048B694AE1'
-  }
-} as const
-
-const BERACHAIN_CONTRACTS = EVM_CONTRACTS['bartio']
-
-
-const UNION_CONTRACTS = {
-  evm_note: 'union10qdttl5qnqfsuvm852zrfysqkuydn0hwz6xe5472tv5590v95zhs49fdlh',
-  ucs01_forwarder: 'union1m87a5scxnnk83wfwapxlufzm58qe2v65985exff70z95a2yr86yq7hl08h'
-} as const
-
 const SWAP_AMOUNT = 7
 
 const swap = async () => {
+  if (!$fromChain) return toast.error("can't find fromChain in config")
+  if (!$fromAsset) return toast.error(`Error finding fromAsset`)
+  if (!$toChain) return toast.error("can't find toChain in config")
+  if (!$fromAsset) return toast.error(`Error finding fromAsset`)
+  if (!swapAmount) return toast.error("Please select an amount")
+
+  let supported = getSupportedAsset($fromChain, $fromAsset.address)
+  let decimals = supported?.decimals ?? 0
+  let parsedSwapAmount = parseUnits(swapAmount, decimals)
+
   const cosmosOfflineSigner = window?.keplr?.getOfflineSigner($fromChainId, {
     disableBalanceCheck: false
   })
@@ -191,10 +179,11 @@ const swap = async () => {
     rpcUrl: `https://rpc.testnet-8.union.build`
   })
 
-  const cosmosAddress = await cosmosClient.getCosmosSdkAccount().then(({ address }) => address);
+  const cosmosAddress = await cosmosClient.getCosmosSdkAccount().then(({ address }) => address) as `union${string}`;
 
   // Queries for users proxy address on bartio
   const evmProxyAddress = await readContract(config, {
+    // TODO: don't hardcode
     chainId: 80084,
     abi: evmVoiceAbi,
     address: BERACHAIN_CONTRACTS.evm_voice,
@@ -208,9 +197,6 @@ const swap = async () => {
 
   console.log(evmProxyAddress);
 
-  const cosmosBalances = await cosmosClient.getCosmosSdkBalances()
-  console.log(cosmosBalances)
-
   await cosmosClient.transferAssets(
     {
       kind: "cosmwasm",
@@ -219,15 +205,19 @@ const swap = async () => {
           contractAddress: UNION_CONTRACTS.ucs01_forwarder,
           msg: {
             transfer: {
+              // TODO: don't hardcode
+              // Bartio channel id
               channel: "channel-86",
               receiver: evmProxyAddress.slice(2),
               memo: ""
             }
           },
-          funds: [{ denom: "muno", amount: SWAP_AMOUNT.toString() }]
+          funds: [{ denom: $fromAsset.address, amount: parsedSwapAmount.toString() }]
         }
       ]
     })
+
+  // TODO: wait for transfer to be confirmed
 
   const evmNoteMsg = {
     kind: "cosmwasm",
@@ -238,55 +228,19 @@ const swap = async () => {
           execute: {
             msgs: [
               // swap
-              {
-                delegate_call: {
-                  to: BERACHAIN_CONTRACTS.bex_actions,
-                  data: encodeFunctionData({
-                    abi: bexActionsAbi,
-                    functionName: "swap",
-                    args: [
-                      BERACHAIN_CONTRACTS.bex_actions,
-                      {
-                        // $fromAsset (uno on bera)
-                        base: "0x08247b1C6D6AACF6C655f711661D5810380C8385",
-                        // $toAsset (honey on bera)
-                        quote: "0x0E4aaF1351de4c0264C5c7056Ef3777b41BD8e03",
-                        // amount?
-                        quantity: SWAP_AMOUNT
-                      }
-                    ]
-                  }).slice(2),
-                },
-                // allow_failure: true
-              },
+              bexSwapActionMsg({
+                // TODO: how do we dynamically resolve this?
+                // $fromAsset, but on toChain (uno on bera)
+                baseAsset: BERACHAIN_CONTRACTS.muno,
+                quoteAsset: $toAssetAddress,
+                swapAmount: parsedSwapAmount
+              }),
               // send
-              {
-                delegate_call: {
-                  to: BERACHAIN_CONTRACTS.ibc_actions,
-                  data: encodeFunctionData({
-                    abi: ibcTokenActionsAbi,
-                    functionName: "ibcSendPercentage",
-                    args: [
-                      BERACHAIN_CONTRACTS.ibc_actions,
-                      {
-                        tokens: [{
-                          // $toAsset (honey on bera)
-                          denom: "0x0E4aaF1351de4c0264C5c7056Ef3777b41BD8e03",
-                          // 100%
-                          percentage: 1e6
-                        }],
-                        // TODO: EVM UCS channel id
-                        channelId: "channel-3",
-                        // TODO: User hex address on Union
-                        receiver: cosmosToEvmAddress(cosmosAddress),
-                        // receiver: "15cbba30256b961c37b3fd7224523abdf562fd72",
-                        extension: ""
-                      }
-                    ]
-                  }).slice(2),
-                  // allow_failure: true
-                }
-              }
+              sendFullBalanceBackActionMsg({
+                evmChainId: '80084',
+                tokens: [$toAssetAddress],
+                unionReceiverAddress: cosmosAddress
+              }),
             ],
             callback: null,
             timeout_seconds: "5000000"
@@ -355,9 +309,9 @@ const swap = async () => {
             autocorrect="off"
             type="number"
             inputmode="decimal"
-            bind:value={amount}
+            bind:value={swapAmount}
             class={cn(
-              !balanceCoversAmount && amount ? 'border-red-500' : '',
+              !balanceCoversAmount && swapAmount ? 'border-red-500' : '',
               'focus:ring-0 focus-visible:ring-0 disabled:bg-black/30',
             )}
             disabled={!$fromAsset}
@@ -411,9 +365,6 @@ const swap = async () => {
             </div>
           {/if}
         </section>
-        <section>
-          <CardSectionHeading>Amount</CardSectionHeading>
-        </section>
       </Card.Content>
     </Card.Root>
     <Button
@@ -429,7 +380,7 @@ const swap = async () => {
 
   <ChainDialog
     bind:dialogOpen={dialogOpenFromChain}
-    chains={chains.filter(c => c.enabled_staging)}
+    chains={chains.filter(c => c.enabled_staging).filter(c => ENABLED_FROM_CHAIN_IDS.includes(c.chain_id))}
     kind="from"
     onChainSelect={newSelectedChain => {
       fromChainId.set(newSelectedChain)
@@ -440,7 +391,7 @@ const swap = async () => {
 
   <ChainDialog
     bind:dialogOpen={dialogOpenToChain}
-    chains={chains.filter(c => c.enabled_staging)}
+    chains={chains.filter(c => c.enabled_staging).filter(c => ENABLED_TO_CHAIN_IDS.includes(c.chain_id))}
     kind="to"
     onChainSelect={newSelectedChain => {
       toChainId.set(newSelectedChain)
