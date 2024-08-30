@@ -322,7 +322,7 @@ const swap = async () => {
             {#if $swapToTokens === null}
               Failed to load sendable balances for <b>{$toChain?.display_name}</b>.
             {:else if $swapToTokens && $swapToTokens.length === 0}
-              No swaps are available on <b>{$toChain?.display_name}</b>. Please select a different chains.
+              No swap pairs are available for this asset on <b>{$toChain?.display_name}</b>. Please select a different chains.
             {:else}
               <Button
                 class="w-full"
