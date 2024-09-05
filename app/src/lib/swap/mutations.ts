@@ -1,7 +1,7 @@
 import { createMutation } from "@tanstack/svelte-query";
 import { UNION_CONTRACTS } from "./constants";
 import { UnionClient } from "@union/client";
-import { sendFullBalanceBackMsg, swapActionMsg } from "./actionMsgs";
+import { sendFullBalanceBackMsg, swapActionMsg } from "./action-msgs";
 import { toast } from "svelte-sonner";
 import type { Chain } from "$lib/types";
 import type { EvmAddress } from "$lib/wallet/types";
