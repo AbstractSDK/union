@@ -20,7 +20,12 @@ import { formatUnits, parseUnits } from 'viem';
 import CardSectionHeading from '../routes/transfer/(components)/card-section-heading.svelte';
 import Chevron from '../routes/transfer/(components)/chevron.svelte';
 import { userBalancesQuery } from "./queries/balance";
-import { PAIRS, SWAPPABLE_ASSETS } from "./swap/constants";
+import {
+  EVM_TO_UNION_CONNECTIONS,
+  PAIRS,
+  type SupportedEvmVoiceChainId,
+  SWAPPABLE_ASSETS,
+} from './swap/constants'
 import { isSupportedChainId as isSwapSupportedChainId } from "./swap/helpers";
 import { createEvmSwapMutation, createTransferToEvmMutation } from './swap/mutations';
 import { evmProxyAddressQuery } from "./swap/queries";
@@ -170,10 +175,13 @@ let unionAddr = derived(
   }
 )
 
+console.log('unionAddr', $unionAddr)
+
 $: evmProxyAddress = evmProxyAddressQuery({
   cosmosAddress: $unionAddr,
   // TODO: don't hardcode the connection as it will be different for different chains
   connectionId: 'connection-0',
+  // connectionId: EVM_TO_UNION_CONNECTIONS[$toChainId as SupportedEvmVoiceChainId],
   evmChainId: $toChainId
 })
 
@@ -255,7 +263,9 @@ const swap = async () => {
         <section>
           <CardSectionHeading>Asset</CardSectionHeading>
           {#if $sendableBalances !== undefined && $fromChainId}
-            {#if $sendableBalances === null}
+            {#if $userAddrCosmos === null}
+              Connect your Cosmos wallet
+            {:else if $sendableBalances === null}
               Failed to load sendable balances for <b>{$fromChain?.display_name}</b>.
             {:else if $sendableBalances && $sendableBalances.length === 0}
               You don't have sendable assets on <b>{$fromChain?.display_name}</b>. You can get some from <a

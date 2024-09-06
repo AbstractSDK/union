@@ -407,257 +407,268 @@ export const ibcTokenActionsAbi = [
 
 export const bexActionsAbi = [
   {
-    'type': 'constructor',
-    'inputs': [
+    "type": "constructor",
+    "inputs": [
       {
-        'name': 'owner',
-        'type': 'address',
-        'internalType': 'address',
+        "name": "owner",
+        "type": "address",
+        "internalType": "address"
       },
       {
-        'name': 'bexSwap_',
-        'type': 'address',
-        'internalType': 'contract IBex',
-      },
+        "name": "bexSwap_",
+        "type": "address",
+        "internalType": "contract IBex"
+      }
     ],
-    'stateMutability': 'nonpayable',
+    "stateMutability": "nonpayable"
   },
   {
-    'type': 'function',
-    'name': 'bexSwap',
-    'inputs': [],
-    'outputs': [
+    "type": "function",
+    "name": "bexSwap",
+    "inputs": [],
+    "outputs": [
       {
-        'name': '',
-        'type': 'address',
-        'internalType': 'contract IBex',
-      },
+        "name": "",
+        "type": "address",
+        "internalType": "contract IBex"
+      }
     ],
-    'stateMutability': 'view',
+    "stateMutability": "view"
   },
   {
-    'type': 'function',
-    'name': 'owner',
-    'inputs': [],
-    'outputs': [
+    "type": "function",
+    "name": "owner",
+    "inputs": [],
+    "outputs": [
       {
-        'name': '',
-        'type': 'address',
-        'internalType': 'address',
-      },
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
     ],
-    'stateMutability': 'view',
+    "stateMutability": "view"
   },
   {
-    'type': 'function',
-    'name': 'paused',
-    'inputs': [],
-    'outputs': [
+    "type": "function",
+    "name": "paused",
+    "inputs": [],
+    "outputs": [
       {
-        'name': '',
-        'type': 'bool',
-        'internalType': 'bool',
-      },
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
     ],
-    'stateMutability': 'view',
+    "stateMutability": "view"
   },
   {
-    'type': 'function',
-    'name': 'renounceOwnership',
-    'inputs': [],
-    'outputs': [],
-    'stateMutability': 'nonpayable',
+    "type": "function",
+    "name": "renounceOwnership",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
   },
   {
-    'type': 'function',
-    'name': 'setBexSwap',
-    'inputs': [
+    "type": "function",
+    "name": "setBexSwap",
+    "inputs": [
       {
-        'name': 'bexSwap_',
-        'type': 'address',
-        'internalType': 'contract IBex',
-      },
+        "name": "bexSwap_",
+        "type": "address",
+        "internalType": "contract IBex"
+      }
     ],
-    'outputs': [],
-    'stateMutability': 'nonpayable',
+    "outputs": [],
+    "stateMutability": "nonpayable"
   },
   {
-    'type': 'function',
-    'name': 'swap',
-    'inputs': [
+    "type": "function",
+    "name": "swap",
+    "inputs": [
       {
-        'name': 'executor',
-        'type': 'address',
-        'internalType': 'contract BexActions',
+        "name": "executor",
+        "type": "address",
+        "internalType": "contract BexActions"
       },
       {
-        'name': 'swapMessage',
-        'type': 'tuple',
-        'internalType': 'struct BexActions.SwapMessage',
-        'components': [
+        "name": "swapMessage",
+        "type": "tuple",
+        "internalType": "struct BexActions.SwapMessage",
+        "components": [
           {
-            'name': 'base',
-            'type': 'address',
-            'internalType': 'address',
+            "name": "base",
+            "type": "address",
+            "internalType": "address"
           },
           {
-            'name': 'quote',
-            'type': 'address',
-            'internalType': 'address',
+            "name": "quote",
+            "type": "address",
+            "internalType": "address"
           },
           {
-            'name': 'quantity',
-            'type': 'uint128',
-            'internalType': 'uint128',
+            "name": "quantity",
+            "type": "uint128",
+            "internalType": "uint128"
           },
-        ],
-      },
+          {
+            "name": "isBuy",
+            "type": "bool",
+            "internalType": "bool"
+          }
+        ]
+      }
     ],
-    'outputs': [
+    "outputs": [
       {
-        'name': 'baseQuote',
-        'type': 'int128',
-        'internalType': 'int128',
+        "name": "baseQuote",
+        "type": "int128",
+        "internalType": "int128"
       },
       {
-        'name': 'quoteFlow',
-        'type': 'int128',
-        'internalType': 'int128',
-      },
+        "name": "quoteFlow",
+        "type": "int128",
+        "internalType": "int128"
+      }
     ],
-    'stateMutability': 'nonpayable',
+    "stateMutability": "nonpayable"
   },
   {
-    'type': 'function',
-    'name': 'transferOwnership',
-    'inputs': [
+    "type": "function",
+    "name": "transferOwnership",
+    "inputs": [
       {
-        'name': 'newOwner',
-        'type': 'address',
-        'internalType': 'address',
-      },
+        "name": "newOwner",
+        "type": "address",
+        "internalType": "address"
+      }
     ],
-    'outputs': [],
-    'stateMutability': 'nonpayable',
+    "outputs": [],
+    "stateMutability": "nonpayable"
   },
   {
-    'type': 'event',
-    'name': 'OwnershipTransferred',
-    'inputs': [
+    "type": "event",
+    "name": "OwnershipTransferred",
+    "inputs": [
       {
-        'name': 'previousOwner',
-        'type': 'address',
-        'indexed': true,
-        'internalType': 'address',
+        "name": "previousOwner",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
       },
       {
-        'name': 'newOwner',
-        'type': 'address',
-        'indexed': true,
-        'internalType': 'address',
-      },
+        "name": "newOwner",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
     ],
-    'anonymous': false,
+    "anonymous": false
   },
   {
-    'type': 'event',
-    'name': 'Paused',
-    'inputs': [
+    "type": "event",
+    "name": "Paused",
+    "inputs": [
       {
-        'name': 'account',
-        'type': 'address',
-        'indexed': false,
-        'internalType': 'address',
-      },
+        "name": "account",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      }
     ],
-    'anonymous': false,
+    "anonymous": false
   },
   {
-    'type': 'event',
-    'name': 'SwapReceived',
-    'inputs': [
+    "type": "event",
+    "name": "SwapReceived",
+    "inputs": [
       {
-        'name': 'base',
-        'type': 'address',
-        'indexed': true,
-        'internalType': 'address',
+        "name": "base",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
       },
       {
-        'name': 'quote',
-        'type': 'address',
-        'indexed': true,
-        'internalType': 'address',
+        "name": "quote",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
       },
       {
-        'name': 'quantity',
-        'type': 'uint128',
-        'indexed': false,
-        'internalType': 'uint128',
+        "name": "quantity",
+        "type": "uint128",
+        "indexed": false,
+        "internalType": "uint128"
       },
+      {
+        "name": "isBuy",
+        "type": "bool",
+        "indexed": false,
+        "internalType": "bool"
+      }
     ],
-    'anonymous': false,
+    "anonymous": false
   },
   {
-    'type': 'event',
-    'name': 'Unpaused',
-    'inputs': [
+    "type": "event",
+    "name": "Unpaused",
+    "inputs": [
       {
-        'name': 'account',
-        'type': 'address',
-        'indexed': false,
-        'internalType': 'address',
-      },
+        "name": "account",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      }
     ],
-    'anonymous': false,
+    "anonymous": false
   },
   {
-    'type': 'error',
-    'name': 'EnforcedPause',
-    'inputs': [],
+    "type": "error",
+    "name": "EnforcedPause",
+    "inputs": []
   },
   {
-    'type': 'error',
-    'name': 'ExpectedPause',
-    'inputs': [],
+    "type": "error",
+    "name": "ExpectedPause",
+    "inputs": []
   },
   {
-    'type': 'error',
-    'name': 'FailedApproval',
-    'inputs': [
+    "type": "error",
+    "name": "FailedApproval",
+    "inputs": [
       {
-        'name': 'token',
-        'type': 'address',
-        'internalType': 'address',
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
       },
       {
-        'name': 'amount',
-        'type': 'uint128',
-        'internalType': 'uint128',
-      },
-    ],
+        "name": "amount",
+        "type": "uint128",
+        "internalType": "uint128"
+      }
+    ]
   },
   {
-    'type': 'error',
-    'name': 'OwnableInvalidOwner',
-    'inputs': [
+    "type": "error",
+    "name": "OwnableInvalidOwner",
+    "inputs": [
       {
-        'name': 'owner',
-        'type': 'address',
-        'internalType': 'address',
-      },
-    ],
+        "name": "owner",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
   },
   {
-    'type': 'error',
-    'name': 'OwnableUnauthorizedAccount',
-    'inputs': [
+    "type": "error",
+    "name": "OwnableUnauthorizedAccount",
+    "inputs": [
       {
-        'name': 'account',
-        'type': 'address',
-        'internalType': 'address',
-      },
-    ],
-  },
+        "name": "account",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
+  }
 ]
 
 export const evmVoiceAbi = [

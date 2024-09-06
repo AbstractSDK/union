@@ -87,7 +87,8 @@ export const bexSwapActionMsg = ({ baseAsset, quoteAsset, swapAmount }: SwapActi
             base: baseAsset,
             quote: quoteAsset,
             // amount?
-            quantity: swapAmount
+            quantity: swapAmount,
+            isBuy: true
           }
         ]
       }).slice(2),
